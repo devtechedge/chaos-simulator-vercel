@@ -2,32 +2,44 @@
 
 A real-time chaos engineering simulator with self-healing microservices, animated SVG topology, particle effects, sound, and a multi-step scenario builder.
 
-Built with **Next.js 16** (frontend) + **Bun + Socket.io** (backend chaos engine).
+**Runs entirely in the browser. No backend, no WebSocket server, no database needed.**
 
-![dashboard](https://img.shields.io/badge/Next.js-16-black) ![bun](https://img.shields.io/badge/Bun-1.x-black) ![socket.io](https://img.shields.io/badge/Socket.io-4.8-black) ![tailwind](https://img.shields.io/badge/Tailwind-4-06b6d4)
+![next](https://img.shields.io/badge/Next.js-16-black) ![tailwind](https://img.shields.io/badge/Tailwind-4-06b6d4) ![static](https://img.shields.io/badge/Static_Export-100%25_Client_Side-orange) ![vercel](https://img.shields.io/badge/Deploy-Vercel_/_GitHub_Pages-brightgreen)
+
+---
+
+## What changed from the original?
+
+The original version required **two hosts**: a Next.js frontend on Vercel + a separate Bun/Socket.io backend on Render or Railway. This was because the chaos simulation engine ran as a long-running server process.
+
+**This version eliminates the backend entirely.** The entire chaos engine (728 lines of simulation logic) has been rewritten as a React hook (`useChaosEngine.ts`) that runs in the browser using `setInterval`. The result:
+
+- No Socket.io, no Bun, no WebSocket server
+- No Supabase, no Render, no Railway, no Fly.io
+- No environment variables to configure
+- No CORS issues, no proxy rewrites
+- Deploys as a **static site** to **Vercel** or **GitHub Pages** with zero config
+- Every feature from the original is preserved 100%
 
 ---
 
 ## ✨ Features
 
-### Core (existing)
+### Core simulation
 - 3 mock microservices: `AuthService`, `PaymentService`, `InventoryService`
 - Automated Chaos Injector (30s loop): `500_ERROR`, `LATENCY_SPIKE`, `SERVICE_CRASH`
 - Self-Healing Recovery Worker (recovers within 8–15s)
-- REST API: `/api/telemetry`, `/api/anomalies`, `/api/latency-history`
-- Real-time Socket.io telemetry
 - Per-service 500/Latency/Crash injection + Massive Network Partition
 - KPI strip (active services, outages prevented, chaos cycles, avg latency)
 
-### Animated UI redesign
+### Animated UI
 - **Framer Motion** transitions everywhere (layout, hover, AnimatePresence on log entries)
-- **Animated SVG service topology** — gateway + 3 services with live particle data flow along edges, pulse rings on degraded/down nodes, rotating dashed rings
+- **Animated SVG service topology** — gateway + 3 services with live particle data flow along edges, pulse rings on degraded/down nodes
 - **Canvas particle burst overlay** — colored particles + shockwaves on every CRITICAL event
-- Animated connection indicator (LIVE / CONNECTING / RECONNECTING / OFFLINE)
 - Drifting background glow blobs + animated grid
 
-### 5 new features
-1. **Real-time multi-line latency chart** (Recharts, 60s window, SLO threshold reference)
+### Interactive features
+1. **Real-time multi-line latency chart** (Recharts, 60s window)
 2. **Animated SVG service topology** with particle flow + health-based pulse rings
 3. **Chaos Scenario Builder wizard** — 3-step dialog with 4 presets (Rolling Thunder, Latency Cascade, Black Friday, Cascading Failure) + custom composer + live progress banner
 4. **Anomaly History Timeline** — filterable by service, stats summary, triggered-by badges (auto/manual/scenario)
@@ -39,12 +51,11 @@ Built with **Next.js 16** (frontend) + **Bun + Socket.io** (backend chaos engine
 
 ```
 chaos-simulator/
-├── src/                              # Next.js frontend
+├── src/
 │   ├── app/
 │   │   ├── layout.tsx                # Root layout (dark mode)
-│   │   ├── page.tsx                  # Main dashboard (~750 lines)
-│   │   ├── globals.css              # Tailwind + custom animations
-│   │   └── api/route.ts             # Sample API route
+│   │   ├── page.tsx                  # Main dashboard — uses useChaosEngine hook
+│   │   └── globals.css              # Tailwind + custom animations
 │   ├── components/
 │   │   ├── ui/                       # shadcn/ui components
 │   │   └── chaos/                    # Custom dashboard components
@@ -57,242 +68,103 @@ chaos-simulator/
 │   │       ├── AnomalyTimeline.tsx
 │   │       ├── ToastStack.tsx
 │   │       └── ConnectionIndicator.tsx
-│   ├── lib/
-│   │   ├── chaos-types.ts            # Shared types + service metadata
-│   │   ├── sound-manager.ts          # Web Audio API sound engine
-│   │   ├── db.ts                     # Prisma client
-│   │   └── utils.ts                  # cn() helper
-│   └── hooks/
-│       ├── use-toast.ts
-│       └── use-mobile.ts
-├── mini-services/
-│   └── chaos-engine/                 # Backend: Bun + Socket.io on port 3030
-│       ├── index.ts                  # Chaos engine + REST + scenarios
-│       ├── package.json
-│       └── tsconfig.json
-├── prisma/
-│   └── schema.prisma                 # (Optional — app works without a DB)
+│   ├── hooks/
+│   │   ├── useChaosEngine.ts         # ⭐ ALL simulation logic lives here (client-side)
+│   │   ├── use-toast.ts
+│   │   └── use-mobile.ts
+│   └── lib/
+│       ├── chaos-types.ts            # Shared types + service metadata
+│       ├── sound-manager.ts          # Web Audio API sound engine
+│       └── utils.ts                  # cn() helper
 ├── public/
 │   ├── logo.svg
 │   └── robots.txt
-├── package.json                      # Frontend deps
-├── next.config.ts                    # Next.js config + socket.io rewrite
+├── package.json
+├── next.config.ts                    # output: "export" for static hosting
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── postcss.config.mjs
 ├── eslint.config.mjs
-├── components.json                   # shadcn/ui config
-├── Caddyfile                         # Optional: Caddy reverse proxy config
-├── .env.example                      # Environment variables template
-└── README.md                         # This file
+└── components.json                   # shadcn/ui config
 ```
 
 ---
 
 ## 🚀 Quick start (local dev)
 
-### Prerequisites
-- [Node.js 18+](https://nodejs.org/) or [Bun](https://bun.sh/) (recommended)
-- Any terminal
-
 ### 1. Install dependencies
 
 ```bash
-# Install Bun first (optional but recommended):
-# curl -fsSL https://bun.sh/install | bash
-
-# Install frontend deps
-bun install
-
-# Install chaos-engine deps
-cd mini-services/chaos-engine
-bun install
-cd ../..
+npm install
 ```
 
-### 2. Start the chaos engine (port 3030)
+### 2. Start the dev server
 
 ```bash
-cd mini-services/chaos-engine
-bun index.ts
+npm run dev
 ```
 
-Leave this running in a separate terminal. You should see:
-```
-🜄 Chaos Engine running on port 3030
-  REST API:  http://localhost:3030/api/telemetry
-  WebSocket: ws://localhost:3030/socket.io/
-```
+Open **http://localhost:3000** — the simulation starts immediately. No backend to run.
 
-### 3. Start the Next.js dev server (port 3000)
+### 3. Build for production (static export)
 
 ```bash
-# From project root
-bun run dev
-# OR: npm run dev / pnpm dev / yarn dev
+npm run build
 ```
 
-Open **http://localhost:3000** — the dashboard should connect within a second and show LIVE status.
-
-### 4. (Optional) Use Caddy as a unified gateway on port 81
-
-If you want a single entry point that routes both the dashboard and the WebSocket through one port, use the included `Caddyfile`:
-
-```bash
-caddy run --config Caddyfile
-# Then visit http://localhost:81
-```
-
-This is what the original handoff used. For local dev you don't need it — Next.js's built-in rewrite handles the socket.io proxy automatically.
+This generates an `out/` folder with plain HTML/JS/CSS (~1.9MB total). Deploy it anywhere.
 
 ---
 
-## 🌐 Hosting guide
+## 🌐 Deploy
 
-### Do you need Vercel? Supabase?
+### Option 1: Vercel (easiest)
 
-| Service | Do you need it? | Why |
-|---|---|---|
-| **GitHub** | ✅ Yes (free, required) | Just to store/share your code |
-| **Vercel** | ⚠️ Partial — frontend only | Perfect for the Next.js dashboard, but **cannot host the chaos-engine WebSocket server** (Vercel is serverless, no long-running processes) |
-| **Supabase** | ❌ Not needed | The app uses in-memory state, no database. Supabase would only be useful if you wanted to persist anomaly history to Postgres |
-| **Render / Railway / Fly.io** | ✅ Yes (for the backend) | These support long-running Bun/Node processes + WebSockets on free tiers |
+1. Push this repo to GitHub
+2. Go to [vercel.com](https://vercel.com) → sign in with GitHub
+3. **Add New** → **Project** → import the repo
+4. Leave all settings default → **Deploy**
+5. Done. You get a URL like `chaos-simulator-xxx.vercel.app`
 
-### Recommended production setup
+No environment variables. No build command changes. Zero config.
 
-You need **two hosts** because the chaos-engine is a stateful WebSocket server, not a serverless function:
+### Option 2: GitHub Pages (free)
 
-```
-┌──────────────────────────┐       ┌──────────────────────────┐
-│  Vercel (frontend)       │       │  Render / Railway        │
-│  - Next.js dashboard     │ ────► │  - chaos-engine (Bun)    │
-│  - Static + SSR          │ WSS   │  - Socket.io on port 3030│
-│  - Free tier             │       │  - Free tier             │
-└──────────────────────────┘       └──────────────────────────┘
-```
+1. Push this repo to GitHub
+2. Go to **Settings → Pages → Source → GitHub Actions**
+3. Create `.github/workflows/deploy.yml`:
 
-#### Option A: Vercel (frontend) + Render (backend) — recommended
-
-**1. Push to GitHub**
-```bash
-git init
-git add .
-git commit -m "Initial commit: Chaos Simulator"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/chaos-simulator.git
-git push -u origin main
-```
-
-**2. Deploy the chaos-engine to Render**
-- Go to [render.com](https://render.com), sign in with GitHub
-- New → Web Service → connect your repo
-- Settings:
-  - **Name**: `chaos-engine`
-  - **Region**: closest to you
-  - **Runtime**: `Bun` (or `Node` if Bun isn't available — but Bun is recommended)
-  - **Build command**: `cd mini-services/chaos-engine && bun install`
-  - **Start command**: `cd mini-services/chaos-engine && bun index.ts`
-  - **Plan**: Free
-- Add environment variable: `PORT=3030` (Render assigns its own port via `PORT` env var — see below for code tweak needed)
-- Deploy. You'll get a URL like `https://chaos-engine.onrender.com`
-
-**3. Deploy the Next.js dashboard to Vercel**
-- Go to [vercel.com](https://vercel.com), sign in with GitHub
-- New Project → import your repo
-- Framework preset: Next.js (auto-detected)
-- **Important**: Add an environment variable:
-  - `NEXT_PUBLIC_CHAOS_ENGINE_URL=https://chaos-engine.onrender.com`
-- Deploy. You'll get `https://chaos-simulator.vercel.app`
-
-**4. Update the frontend to point to the Render URL**
-
-The frontend currently connects via `io('/?XTransformPort=3030', { path: '/socket.io/' })` which assumes the chaos engine is on the same origin. For production you need to change this in `src/app/page.tsx`:
-
-```ts
-const CHAOS_ENGINE_URL = process.env.NEXT_PUBLIC_CHAOS_ENGINE_URL || ''
-const socketInstance = io(CHAOS_ENGINE_URL, {
-  path: '/socket.io/',
-  transports: ['websocket', 'polling'],
-  // ... rest of options
-})
+```yaml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - uses: actions/deploy-pages@v4
 ```
 
-Also remove the `rewrites()` block from `next.config.ts` since you no longer need the proxy.
+4. Push the workflow file — GitHub will build and deploy automatically
+5. Your site will be live at `https://YOUR_USERNAME.github.io/chaos-simulator/`
 
-Also update `mini-services/chaos-engine/index.ts` to use the `PORT` env var Render assigns:
-```ts
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3030
-```
+### Option 3: Any static host
 
-**5. Enable CORS on the chaos engine**
-
-In `mini-services/chaos-engine/index.ts`, the CORS is already set to `origin: '*'` for development. For production you might want to lock it down to your Vercel URL:
-```ts
-cors: { 
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST'] 
-}
-```
-
-#### Option B: All-in-one on Railway or Render
-
-You can host **both** services on a single Railway/Render account:
-- Create two web services from the same repo
-- Service 1 (frontend): build = `bun install`, start = `bun run dev` (or `bun run start` after build)
-- Service 2 (backend): as above
-
-Railway gives you a private network so the frontend can reach the backend without exposing it publicly.
-
-#### Option C: Self-host on a VPS (Hetzner / DigitalOcean / Fly.io)
-
-Cheapest for 24/7 use. ~$5/month gets you a small VPS that runs both services.
-
-```bash
-# On the VPS:
-git clone https://github.com/YOUR_USERNAME/chaos-simulator.git
-cd chaos-simulator
-bun install
-cd mini-services/chaos-engine && bun install && cd ../..
-
-# Start backend
-cd mini-services/chaos-engine && bun index.ts &
-
-# Build + start frontend
-bun run build
-bun run start
-
-# Use the included Caddyfile as a reverse proxy on port 80/443
-caddy run --config Caddyfile
-```
-
-### Why not just GitHub?
-
-GitHub only hosts **static** files (via GitHub Pages). This app has:
-1. A Next.js server (server-side rendering, API routes)
-2. A separate Bun WebSocket server (the chaos engine)
-
-Neither can run on GitHub Pages. You need a runtime host.
-
-If you wanted a **static-only** version (no live chaos engine), you could export the Next.js app as static HTML — but then you'd lose all the real-time WebSocket features that make this dashboard impressive.
-
----
-
-## 🔧 Environment variables
-
-Create a `.env` file (or `.env.local`) in the project root:
-
-```bash
-# Copy this file to .env.local and adjust as needed
-# All variables are optional for local dev — defaults work out of the box
-
-# URL of the chaos-engine backend (only needed in production)
-# Leave empty for local dev (Next.js rewrite proxies it automatically)
-NEXT_PUBLIC_CHAOS_ENGINE_URL=
-
-# CORS origin for the chaos-engine (lock down in production)
-# Set to your Vercel URL like https://chaos-simulator.vercel.app
-CORS_ORIGIN=*
-```
+The `out/` folder from `npm run build` works on **Netlify, Cloudflare Pages, S3, or any web server**. Just point it at the `out/` directory.
 
 ---
 
@@ -300,47 +172,15 @@ CORS_ORIGIN=*
 
 | Layer | Tech |
 |---|---|
-| Frontend framework | Next.js 16 (App Router) |
+| Framework | Next.js 16 (static export) |
 | Language | TypeScript 5 |
-| Styling | Tailwind CSS 4 + shadcn/ui (New York style) |
+| Simulation | Client-side React hook (`useChaosEngine`) |
+| Styling | Tailwind CSS 4 + shadcn/ui |
 | Animations | Framer Motion 12 |
 | Charts | Recharts 2 |
 | Icons | Lucide React |
-| Real-time | Socket.io-client 4 |
-| Backend runtime | Bun 1.x |
-| Backend server | Socket.io 4 + Node http |
-| Package manager | Bun (or npm/pnpm/yarn) |
-| Reverse proxy (optional) | Caddy 2 |
-
----
-
-## 📜 Available scripts
-
-### Frontend (project root)
-```bash
-bun run dev        # Start dev server on port 3000
-bun run build      # Production build
-bun run start      # Start production server
-bun run lint       # ESLint check
-bun run db:push    # Push Prisma schema (only if you add a DB)
-```
-
-### Backend (mini-services/chaos-engine)
-```bash
-bun index.ts       # Start chaos engine on port 3030
-bun --hot index.ts # Start with hot reload (dev only)
-```
-
----
-
-## 🎨 Color palette
-
-The dashboard intentionally avoids indigo/blue. The palette is:
-- **Orange** `#f97316` — chaos engine, primary accent
-- **Emerald** `#10b981` — healthy services, recovery
-- **Amber** `#f59e0b` — degraded services, warnings
-- **Red** `#ef4444` — down services, critical alerts
-- **Slate** `#0a0e17` / `#0d1220` — background layers
+| Sound | Web Audio API (no audio files) |
+| Hosting | Vercel / GitHub Pages / any static host |
 
 ---
 
@@ -359,11 +199,6 @@ Once running, try these:
 5. **Click "Crash" on any service** in the Targeted Chaos Injection panel — watch it go DOWN, then self-heal within ~15 seconds.
 
 ---
-
-## 🤝 Credits
-
-- Original handoff: `HANDOFF_TO_GLM5.2.md`
-- Built with the Z.ai fullstack-dev skill
 
 ## 📄 License
 
