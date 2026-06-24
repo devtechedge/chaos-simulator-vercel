@@ -50,7 +50,7 @@ class SoundManagerClass {
     durationMs: number,
     type: OscillatorType = 'sine',
     delayMs = 0,
-    gain = 1
+    gain = 1,
   ) {
     const ctx = this.ensureContext()
     if (!ctx || !this.masterGain || !this.enabled) return

@@ -1,18 +1,20 @@
 'use client'
-
 import { useEffect, useRef } from 'react'
-
-// A particle burst overlay that fires whenever a "burst" event is emitted.
-// Renders onto a fixed full-screen canvas; particles spawn from the center of
-// the screen (or a custom origin) and fade out.
 
 export interface ParticleBurstRequest {
   id: number
-  x?: number // default: window center
+  x?: number
   y?: number
   color: string
   count?: number
   intensity?: 'normal' | 'big'
+}
+
+const pendingBursts: ParticleBurstRequest[] = []
+let nextBurstId = 1
+
+export function emitParticleBurst(req: Omit<ParticleBurstRequest, 'id'>) {
+  pendingBursts.push({ ...req, id: nextBurstId++ })
 }
 
 interface Particle {
@@ -36,18 +38,10 @@ interface Shockwave {
   color: string
 }
 
-const MAX_PARTICLES = 1200
-
-// Module-level pending bursts queue (so any code can push bursts)
-const pendingBursts: ParticleBurstRequest[] = []
-let nextBurstId = 1
-
-export function emitParticleBurst(req: Omit<ParticleBurstRequest, 'id'>) {
-  pendingBursts.push({ ...req, id: nextBurstId++ })
-}
+const MAX_PARTICLES = 800
 
 export function ParticleOverlay() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<Particle[]>([])
   const shockwavesRef = useRef<Shockwave[]>([])
   const rafRef = useRef<number | null>(null)
@@ -70,39 +64,28 @@ export function ParticleOverlay() {
     window.addEventListener('resize', resize)
 
     const tick = () => {
-      // Drain pending bursts
       while (pendingBursts.length > 0) {
         const burst = pendingBursts.shift()!
         const x = burst.x ?? window.innerWidth / 2
         const y = burst.y ?? window.innerHeight / 2
-        const count = burst.count ?? (burst.intensity === 'big' ? 80 : 36)
+        const count = burst.count ?? (burst.intensity === 'big' ? 60 : 28)
         const isBig = burst.intensity === 'big'
 
-        // Spawn shockwave
         shockwavesRef.current.push({
-          x,
-          y,
-          radius: 8,
-          maxRadius: isBig ? 380 : 180,
-          life: 1,
-          maxLife: 1,
-          color: burst.color,
+          x, y, radius: 8, maxRadius: isBig ? 320 : 160, life: 1, maxLife: 1, color: burst.color,
         })
 
-        // Spawn particles
         for (let i = 0; i < count; i++) {
           if (particlesRef.current.length >= MAX_PARTICLES) break
           const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4
-          const speed = (isBig ? 4 : 2.5) + Math.random() * (isBig ? 8 : 5)
-          const life = 0.7 + Math.random() * 0.6
+          const speed = (isBig ? 3 : 2) + Math.random() * (isBig ? 6 : 4)
+          const life = 0.6 + Math.random() * 0.5
           particlesRef.current.push({
-            x,
-            y,
+            x, y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life,
-            maxLife: life,
-            size: 1.5 + Math.random() * (isBig ? 4 : 2.5),
+            life, maxLife: life,
+            size: 1.2 + Math.random() * (isBig ? 3 : 2),
             color: burst.color,
           })
         }
@@ -111,8 +94,8 @@ export function ParticleOverlay() {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.globalCompositeOperation = 'lighter'
 
-      // Update + render shockwaves
-      const newShockwaves: Shockwave[] = []
+      // Shockwaves
+      const newShocks: Shockwave[] = []
       for (const sw of shockwavesRef.current) {
         sw.radius += (sw.maxRadius - sw.radius) * 0.08
         sw.life -= 0.025
@@ -120,22 +103,22 @@ export function ParticleOverlay() {
           ctx.beginPath()
           ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2)
           ctx.strokeStyle = sw.color
-          ctx.globalAlpha = Math.max(0, sw.life) * 0.6
-          ctx.lineWidth = 2 + (1 - sw.life) * 4
+          ctx.globalAlpha = Math.max(0, sw.life) * 0.5
+          ctx.lineWidth = 2 + (1 - sw.life) * 3
           ctx.stroke()
-          newShockwaves.push(sw)
+          newShocks.push(sw)
         }
       }
-      shockwavesRef.current = newShockwaves
+      shockwavesRef.current = newShocks
 
-      // Update + render particles
+      // Particles
       const newParticles: Particle[] = []
       for (const p of particlesRef.current) {
         p.x += p.vx
         p.y += p.vy
         p.vx *= 0.96
         p.vy *= 0.96
-        p.vy += 0.04 // gravity
+        p.vy += 0.04
         p.life -= 0.018
         if (p.life > 0) {
           const alpha = Math.max(0, p.life / p.maxLife)
@@ -143,11 +126,6 @@ export function ParticleOverlay() {
           ctx.fillStyle = p.color
           ctx.beginPath()
           ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2)
-          ctx.fill()
-          // Glow
-          ctx.globalAlpha = alpha * 0.35
-          ctx.beginPath()
-          ctx.arc(p.x, p.y, p.size * alpha * 3, 0, Math.PI * 2)
           ctx.fill()
           newParticles.push(p)
         }
@@ -170,7 +148,7 @@ export function ParticleOverlay() {
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-[60]"
+      className="pointer-events-none fixed inset-0 z-40"
       aria-hidden="true"
     />
   )

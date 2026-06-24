@@ -1,13 +1,8 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  output: "export",
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   reactStrictMode: false,
-  // Static export — no trailing slash redirect needed
-  trailingSlash: true,
-};
+  typescript: { ignoreBuildErrors: false },
+}
 
-export default nextConfig;
+export default nextConfig

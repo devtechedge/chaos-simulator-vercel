@@ -1,205 +1,158 @@
-# 🜄 Chaos Simulator — Distributed Microservices Telemetry Dashboard
+# 🜄 Chaos Simulator — Vercel-Only Build
 
-A real-time chaos engineering simulator with self-healing microservices, animated SVG topology, particle effects, sound, and a multi-step scenario builder.
+A real-time chaos engineering simulator with self-healing microservices, animated SVG topology, particle effects, and a multi-step scenario builder. **5 brands, 25 products, 11k+ price history rows, 6 panels, fully Vercel-only — no backend.**
 
-**Runs entirely in the browser. No backend, no WebSocket server, no database needed.**
-
-![next](https://img.shields.io/badge/Next.js-16-black) ![tailwind](https://img.shields.io/badge/Tailwind-4-06b6d4) ![static](https://img.shields.io/badge/Static_Export-100%25_Client_Side-orange) ![vercel](https://img.shields.io/badge/Deploy-Vercel_/_GitHub_Pages-brightgreen)
+![Next.js 15](https://img.shields.io/badge/Next.js-15-black) ![Vercel](https://img.shields.io/badge/Vercel-ready-black) ![Tailwind 4](https://img.shields.io/badge/Tailwind-4-06b6d4) ![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178c6)
 
 ---
 
-## What changed from the original?
+## Architecture
 
-The original version required **two hosts**: a Next.js frontend on Vercel + a separate Bun/Socket.io backend on Render or Railway. This was because the chaos simulation engine ran as a long-running server process.
+```
+Single Vercel deployment
+└── Next.js 15 app
+    ├── src/lib/chaos-engine.ts   # chaos singleton (in-memory, deterministic)
+    ├── src/lib/chaos-types.ts    # type definitions
+    ├── src/lib/theme.ts          # dark/light mode hook + localStorage
+    ├── src/lib/utils.ts
+    └── src/components/
+        ├── ui/                   # card, badge, button, input, etc. — all theme-aware
+        └── chaos/                # 10 chaos components
+            ├── TelemetryOverview.tsx
+            ├── ServiceTopology.tsx
+            ├── LatencyChart.tsx
+            ├── AnomalyTimeline.tsx
+            ├── ChaosScenarioBuilder.tsx
+            ├── LiveLog.tsx
+            ├── ServiceCard.tsx
+            ├── ConnectionIndicator.tsx
+            ├── ToastStack.tsx
+            └── ParticleOverlay.tsx
+```
 
-**This version eliminates the backend entirely.** The entire chaos engine (728 lines of simulation logic) has been rewritten as a React hook (`useChaosEngine.ts`) that runs in the browser using `setInterval`. The result:
-
-- No Socket.io, no Bun, no WebSocket server
-- No Supabase, no Render, no Railway, no Fly.io
-- No environment variables to configure
-- No CORS issues, no proxy rewrites
-- Deploys as a **static site** to **Vercel** or **GitHub Pages** with zero config
-- Every feature from the original is preserved 100%
+**Removed from original:** `mini-services/`, `prisma/`, `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `bun.lock`, API routes. All replaced by `chaos-engine.ts` running as a module-level singleton.
 
 ---
 
-## ✨ Features
+## v3.1 — Changelog (editorial redesign)
 
-### Core simulation
-- 3 mock microservices: `AuthService`, `PaymentService`, `InventoryService`
-- Automated Chaos Injector (30s loop): `500_ERROR`, `LATENCY_SPIKE`, `SERVICE_CRASH`
-- Self-Healing Recovery Worker (recovers within 8–15s)
-- Per-service 500/Latency/Crash injection + Massive Network Partition
-- KPI strip (active services, outages prevented, chaos cycles, avg latency)
+### #1 · Premium dark/light theme system
+- Added `src/lib/theme.ts` — `useTheme()` hook with localStorage persistence + OS preference fallback
+- Added inline no-FOUC bootstrap script in `<head>` (sets `data-theme` before React hydrates)
+- Two complete CSS variable palettes: **dark** (deep neutral `#0B0B0D`) and **light** (warm paper `#FAFAF7`)
+- Single accent color: orange `#F97316` (dark) / `#EA580C` (light) — restrained, used sparingly
 
-### Animated UI
-- **Framer Motion** transitions everywhere (layout, hover, AnimatePresence on log entries)
-- **Animated SVG service topology** — gateway + 3 services with live particle data flow along edges, pulse rings on degraded/down nodes
-- **Canvas particle burst overlay** — colored particles + shockwaves on every CRITICAL event
-- Drifting background glow blobs + animated grid
+### #2 · Editorial typography stack
+- **Display**: `"New York", "Iowan Old Style", Charter, Georgia, ui-serif, serif`
+- **Body**: `ui-sans-serif, system-ui, sans-serif`
+- **Mono**: `"SF Mono", "JetBrains Mono", ui-monospace, monospace` with `font-variant-numeric: tabular-nums` on every numeric column
+- Labels use `letter-spacing: 0.14em` small-caps for editorial FT.com feel
+- Massive `hero-num` for KPI hero figures
 
-### Interactive features
-1. **Real-time multi-line latency chart** (Recharts, 60s window)
-2. **Animated SVG service topology** with particle flow + health-based pulse rings
-3. **Chaos Scenario Builder wizard** — 3-step dialog with 4 presets (Rolling Thunder, Latency Cascade, Black Friday, Cascading Failure) + custom composer + live progress banner
-4. **Anomaly History Timeline** — filterable by service, stats summary, triggered-by badges (auto/manual/scenario)
-5. **Sound + Toast notification system** — Web Audio API synthesized tones (no audio files needed), animated toast stack with progress bars
+### #3 · All UI primitives rewritten
+Updated `Card`, `Button`, `Badge`, `Input`, `Select`, `Separator`, `Tabs`, `Progress`, `Dialog` to use `var(--color-*)` instead of hardcoded Tailwind dark classes. **Zero hardcoded dark colors in compiled HTML.**
 
----
+### #4 · Sidebar + page shell
+- New sidebar: typographic nav with category labels in small caps, single accent dot on active item
+- Sticky top bar with breadcrumb + theme toggle pill
+- Editorial panel transitions via CSS `@keyframes fade-in` (400ms ease) — **replaces framer-motion** (React 19 incompatible)
 
-## 📁 Project structure
+### #5 · New `PanelShell` component
+- Reusable editorial wrapper used by all 6 panels
+- `Section`, `DataRow`, `KpiStrip`, `ChartTooltip`, `EmptyState` helpers
 
-```
-chaos-simulator/
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx                # Root layout (dark mode)
-│   │   ├── page.tsx                  # Main dashboard — uses useChaosEngine hook
-│   │   └── globals.css              # Tailwind + custom animations
-│   ├── components/
-│   │   ├── ui/                       # shadcn/ui components
-│   │   └── chaos/                    # Custom dashboard components
-│   │       ├── ParticleOverlay.tsx
-│   │       ├── ServiceTopology.tsx
-│   │       ├── LatencyChart.tsx
-│   │       ├── ServiceCard.tsx
-│   │       ├── LiveLog.tsx
-│   │       ├── ChaosScenarioBuilder.tsx
-│   │       ├── AnomalyTimeline.tsx
-│   │       ├── ToastStack.tsx
-│   │       └── ConnectionIndicator.tsx
-│   ├── hooks/
-│   │   ├── useChaosEngine.ts         # ⭐ ALL simulation logic lives here (client-side)
-│   │   ├── use-toast.ts
-│   │   └── use-mobile.ts
-│   └── lib/
-│       ├── chaos-types.ts            # Shared types + service metadata
-│       ├── sound-manager.ts          # Web Audio API sound engine
-│       └── utils.ts                  # cn() helper
-├── public/
-│   ├── logo.svg
-│   └── robots.txt
-├── package.json
-├── next.config.ts                    # output: "export" for static hosting
-├── tailwind.config.ts
-├── tsconfig.json
-├── postcss.config.mjs
-├── eslint.config.mjs
-└── components.json                   # shadcn/ui config
-```
+### #6 · All 10 chaos components redesigned
+- `TelemetryOverview` — editorial hero with massive `hero-num text-[80px]` + 8-column KPI strip + 2 chart panels
+- `ServiceTopology` — SVG with theme-aware colors (`var(--color-accent)`, `var(--color-positive)`, etc.)
+- `LatencyChart` — Recharts line chart + service selector chips + 3-column summary grid
+- `AnomalyTimeline` — filterable timeline with service + resolved-only filters
+- `ChaosScenarioBuilder` — 3-step wizard with template/compose/review steps
+- `LiveLog` — terminal-style log with level filter chips
+- `ServiceCard` — health-aware card with injection buttons
+- `ConnectionIndicator` — status dot + label
+- `ToastStack` + `ParticleOverlay` — preserved from original, theme-aware
+
+### #7 · Build version stamp
+- `<meta name="build-version" content="v3.1-..." />` in `<head>`
+- Forces Vercel CDN cache invalidation on every deploy
+- Lets you verify in DevTools (View Source → search "build-version")
+
+### #8 · Tailwind v4 CSS-first config
+- Migrated from `@tailwind base/components/utilities` → `@import "tailwindcss"`
+- Added `@source "../**/*.{ts,tsx,js,jsx,mdx}"` directive
+- Added `@theme` block with all custom CSS variables
+- Removed `tailwindcss-animate` (built-in to v4)
+
+### #9 · Removed unused infrastructure
+- `framer-motion` dep (React 19 incompat) → CSS animations
+- `mini-services/` (Bun backend) → in-memory data
+- `prisma/` + `supabase/` → no DB
+- `src/app/api/` routes → unused (data is now in-memory)
+- `Dockerfile`, `docker-compose.yml`, `Caddyfile` → not needed for Vercel
 
 ---
 
-## 🚀 Quick start (local dev)
+## Panels
 
-### 1. Install dependencies
-
-```bash
-npm install
-```
-
-### 2. Start the dev server
-
-```bash
-npm run dev
-```
-
-Open **http://localhost:3000** — the simulation starts immediately. No backend to run.
-
-### 3. Build for production (static export)
-
-```bash
-npm run build
-```
-
-This generates an `out/` folder with plain HTML/JS/CSS (~1.9MB total). Deploy it anywhere.
+| Panel | Path | Description |
+|---|---|---|
+| Overview | `/` | Editorial hero with KPI strip + 2 charts |
+| Service Topology | `/` (Topology tab) | Live SVG mesh with particle data flow |
+| Latency Chart | `/` (Latency tab) | 60s rolling latency per service |
+| Anomaly Timeline | `/` (Anomaly tab) | Filterable history with recovery stats |
+| Chaos Scenarios | `/` (Scenarios tab) | 3-step wizard for multi-step failures |
+| Live Log | `/` (Log tab) | Real-time event stream with filters |
 
 ---
 
-## 🌐 Deploy
+## Dataset (deterministic)
 
-### Option 1: Vercel (easiest)
+Generated at module load via seeded PRNG (mulberry32, seed `0xc0ffee`):
 
-1. Push this repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → sign in with GitHub
-3. **Add New** → **Project** → import the repo
-4. Leave all settings default → **Deploy**
-5. Done. You get a URL like `chaos-simulator-xxx.vercel.app`
-
-No environment variables. No build command changes. Zero config.
-
-### Option 2: GitHub Pages (free)
-
-1. Push this repo to GitHub
-2. Go to **Settings → Pages → Source → GitHub Actions**
-3. Create `.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-      - uses: actions/deploy-pages@v4
-```
-
-4. Push the workflow file — GitHub will build and deploy automatically
-5. Your site will be live at `https://YOUR_USERNAME.github.io/chaos-simulator/`
-
-### Option 3: Any static host
-
-The `out/` folder from `npm run build` works on **Netlify, Cloudflare Pages, S3, or any web server**. Just point it at the `out/` directory.
-
----
-
-## 🛠 Tech stack
-
-| Layer | Tech |
+| Entity | Count |
 |---|---|
-| Framework | Next.js 16 (static export) |
-| Language | TypeScript 5 |
-| Simulation | Client-side React hook (`useChaosEngine`) |
-| Styling | Tailwind CSS 4 + shadcn/ui |
-| Animations | Framer Motion 12 |
-| Charts | Recharts 2 |
-| Icons | Lucide React |
-| Sound | Web Audio API (no audio files) |
-| Hosting | Vercel / GitHub Pages / any static host |
+| Brands | 5 (Prada, Gucci, Balenciaga, LV, Versace) |
+| Products | 25 (5 categories × 5 brands) |
+| Regional prices | 125 (× 5 regions) |
+| Price history rows | **11,375** (91 days × 25 × 5) |
+| Launches | 125 |
+| Anomalies | 173 |
+| Micro-services | 3 (AuthService, PaymentService, InventoryService) |
 
 ---
 
-## 🧪 Testing the features
+## Deploy
 
-Once running, try these:
+```bash
+# Local
+bun install && bun run dev    # → http://localhost:3000
 
-1. **Wait 30 seconds** — the chaos engine will auto-inject a random anomaly. Watch the topology pulse, the particle burst, the toast notification, and the latency chart spike.
-
-2. **Open the Scenario Builder** (top-right button) → pick "Black Friday" → Launch. Watch the header banner show live progress as 4 anomalies fire in sequence.
-
-3. **Toggle sound on** (Volume icon top-right) before triggering a partition — the synthesized alarm + particle burst combo is the most dramatic moment.
-
-4. **Filter the Anomaly Timeline** by service or "resolved only" to see historical patterns.
-
-5. **Click "Crash" on any service** in the Targeted Chaos Injection panel — watch it go DOWN, then self-heal within ~15 seconds.
+# Vercel
+vercel --prod                  # zero env vars, zero config
+```
 
 ---
 
-## 📄 License
+## Tech stack
 
-MIT — do whatever you want with it.
+`next@15.1.0` · `react@19` · `typescript@5` · `tailwindcss@4` (`@tailwindcss/postcss`) · `recharts@2.15.4` · `lucide-react@0.525.0` · `class-variance-authority` · `clsx` · `tailwind-merge`
+
+**Removed:** `framer-motion` (React 19 incompat — replaced with CSS), `tailwindcss-animate` (built-in to v4)
+
+---
+
+## Caveats
+
+- **No real backend** — chaos loop runs as `setInterval` in module singleton, resets on cold start
+- **No persistence** — anomaly history is in-memory only (resets on cold start)
+- **No multi-user** — single-user demo
+
+---
+
+## Original repo
+
+[devtechedge/chaos-simulator](https://github.com/devtechedge/chaos-simulator) — Next.js + Bun + Socket.io + Prisma. This build is a complete removal of all DB/backend infrastructure.
+
+## License
+
+MIT
