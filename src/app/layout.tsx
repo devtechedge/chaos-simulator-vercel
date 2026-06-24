@@ -1,48 +1,50 @@
-import type { Metadata } from 'next'
-import './globals.css'
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+import { ThemeWrapper } from "@/components/ThemeProvider";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: 'Chaos Simulator — Distributed Microservices Telemetry',
+  title: "Chaos Simulator — Distributed Microservices Telemetry Dashboard",
   description:
-    'Real-time chaos engineering simulator with self-healing microservices, animated SVG topology, particle effects, sound, and a multi-step scenario builder.',
-  other: {
-    'build-version': 'v3.1-202606240208',
+    "Real-time chaos engineering simulation with self-healing microservices, animated topology, and live telemetry.",
+  keywords: [
+    "chaos engineering",
+    "microservices",
+    "self-healing",
+    "telemetry",
+    "monitoring",
+    "Next.js",
+  ],
+  authors: [{ name: "Chaos Simulator" }],
+  icons: {
+    icon: "/logo.svg",
   },
-}
-
-// Inline bootstrap that runs BEFORE React hydrates, applies saved theme
-// to <html data-theme="..."> so there's no flash on first paint.
-const themeScript = `
-(function() {
-  try {
-    var t = localStorage.getItem('chaos-simulator:theme');
-    if (t !== 'dark' && t !== 'light') {
-      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
-    document.documentElement.setAttribute('data-theme', t);
-  } catch (e) {}
-})();
-`.trim()
+};
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body
-        className="min-h-screen bg-[var(--color-bg)] text-[var(--color-ink)] antialiased"
-        style={{
-          fontFamily: 'var(--font-sans)',
-          fontFeatureSettings: '"ss01", "cv11"',
-        }}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        {children}
+        <ThemeWrapper>{children}</ThemeWrapper>
+        <Toaster />
       </body>
     </html>
-  )
+  );
 }

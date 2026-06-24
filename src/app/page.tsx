@@ -1,257 +1,560 @@
 'use client'
 
-import { useState } from 'react'
-import type { ComponentType } from 'react'
-import { Sun, Moon } from 'lucide-react'
-import { useTheme } from '@/lib/theme'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
+import {
+  Activity,
+  RefreshCw,
+  WifiOff,
+  Flame,
+  Skull,
+  Gauge,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Moon,
+  Sun,
+} from 'lucide-react'
 
-import { TelemetryOverview } from '@/components/chaos/TelemetryOverview'
+import type {
+  AnomalyType,
+  ScenarioStep,
+} from '@/lib/chaos-types'
+import { SERVICE_NAMES, SERVICE_META, ANOMALY_COLORS } from '@/lib/chaos-types'
+import { soundManager } from '@/lib/sound-manager'
+
+import { useChaosEngine } from '@/hooks/useChaosEngine'
+import { ServiceCard, KpiDisplay } from '@/components/chaos/ServiceCard'
+import { LiveLog } from '@/components/chaos/LiveLog'
+import { LatencyChart } from '@/components/chaos/LatencyChart'
 import { ServiceTopology } from '@/components/chaos/ServiceTopology'
 import { AnomalyTimeline } from '@/components/chaos/AnomalyTimeline'
-import { LatencyChart } from '@/components/chaos/LatencyChart'
 import { ChaosScenarioBuilder } from '@/components/chaos/ChaosScenarioBuilder'
-import { ParticleOverlay } from '@/components/chaos/ParticleOverlay'
 import { ToastStack, useChaosToasts } from '@/components/chaos/ToastStack'
-import { LiveLog } from '@/components/chaos/LiveLog'
-import { ConnectionIndicator } from '@/components/chaos/ConnectionIndicator'
-
-type PanelId =
-  | 'overview'
-  | 'topology'
-  | 'anomaly'
-  | 'latency'
-  | 'scenario'
-  | 'log'
-
-interface NavItem {
-  id: PanelId
-  label: string
-  category: 'Telemetry' | 'Operations' | 'Diagnostics'
-}
-
-const NAV: NavItem[] = [
-  { id: 'overview', label: 'Overview', category: 'Telemetry' },
-  { id: 'topology', label: 'Service Topology', category: 'Telemetry' },
-  { id: 'latency', label: 'Latency Chart', category: 'Telemetry' },
-  { id: 'anomaly', label: 'Anomaly Timeline', category: 'Operations' },
-  { id: 'scenario', label: 'Chaos Scenarios', category: 'Operations' },
-  { id: 'log', label: 'Live Event Log', category: 'Diagnostics' },
-]
+import {
+  ParticleOverlay,
+  emitParticleBurst,
+} from '@/components/chaos/ParticleOverlay'
 
 export default function Dashboard() {
-  const [activePanel, setActivePanel] = useState<PanelId>('overview')
-  const { theme, toggle, hydrated } = useTheme()
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
 
-  const grouped = NAV.reduce<Record<string, NavItem[]>>((acc, item) => {
-    ;(acc[item.category] = acc[item.category] || []).push(item)
-    return acc
-  }, {})
+  // ============================================================
+  // CHAOS ENGINE HOOK
+  // ============================================================
+  const {
+    services,
+    logs,
+    latencyHistory,
+    anomalyHistory,
+    chaosEnabled,
+    activeScenario,
+    totalOutagesPrevented,
+    setChaosEnabled: handleToggleChaos,
+    manualRestart: handleManualRestart,
+    triggerPartition: handleTriggerPartition,
+    injectAnomaly: handleInjectAnomaly,
+    runScenario: handleRunScenario,
+  } = useChaosEngine()
 
-  const activeItem = NAV.find((n) => n.id === activePanel)
+  // ============================================================
+  // UI STATE
+  // ============================================================
+  const [soundOn, setSoundOn] = useState(false)
+  const [scenarioOpen, setScenarioOpen] = useState(false)
+  const [simulationCycles, setSimulationCycles] = useState(0)
+
+  const { toasts, pushToast, dismissToast } = useChaosToasts()
+  const processedLogIds = useRef<Set<string>>(new Set())
+
+  // Fix hydration mismatch for theme toggle
+  useEffect(() => setMounted(true), [])
+
+  // ============================================================
+  // SOUND TOGGLE
+  // ============================================================
+  const toggleSound = useCallback(() => {
+    const newVal = !soundOn
+    setSoundOn(newVal)
+    soundManager.setEnabled(newVal)
+    if (newVal) soundManager.play('click')
+  }, [soundOn])
+
+  // ============================================================
+  // LOG EVENT PROCESSING — sound, toast, particles
+  // ============================================================
+  useEffect(() => {
+    for (const entry of logs) {
+      if (processedLogIds.current.has(entry.id)) continue
+      processedLogIds.current.add(entry.id)
+
+      if (processedLogIds.current.size > 500) {
+        processedLogIds.current = new Set(
+          Array.from(processedLogIds.current).slice(-250)
+        )
+      }
+
+      if (entry.level === 'CRITICAL') {
+        setSimulationCycles((prev) => prev + 1)
+        soundManager.play('critical')
+
+        const color =
+          ANOMALY_COLORS[
+            entry.message.includes('CRASHED')
+              ? 'SERVICE_CRASH'
+              : entry.message.includes('PARTITION')
+              ? 'NETWORK_PARTITION'
+              : entry.message.includes('Latency')
+              ? 'LATENCY_SPIKE'
+              : '500_ERROR'
+          ] || '#ef4444'
+
+        emitParticleBurst({ color, intensity: 'big', count: 70 })
+
+        pushToast({
+          kind: 'critical',
+          title: `${entry.service} down`,
+          message: entry.message,
+          service: entry.service,
+        })
+      } else if (entry.level === 'RESOLVED') {
+        soundManager.play('resolved')
+        pushToast({
+          kind: 'resolved',
+          title: `${entry.service} recovered`,
+          message: entry.message,
+          service: entry.service,
+        })
+      } else if (entry.level === 'WARN') {
+        soundManager.play('warning')
+      }
+    }
+  }, [logs, pushToast])
+
+  const getService = (name: string) => services.find((s) => s.name === name)
 
   return (
-    <div className="min-h-screen">
-      {/* Particle overlay — full screen (only renders in browser) */}
+    <div className="relative min-h-screen bg-background text-foreground flex flex-col overflow-x-hidden">
+      {/* Background grid + ambient glow */}
+      <div className="fixed inset-0 chaos-grid-bg pointer-events-none" />
+      <div className="dark:block hidden">
+        <div className="fixed top-0 left-1/4 w-[500px] h-[500px] rounded-full bg-orange-500/[0.04] blur-[120px] animate-drift pointer-events-none" />
+        <div className="fixed bottom-0 right-1/4 w-[400px] h-[400px] rounded-full bg-red-500/[0.03] blur-[100px] animate-drift pointer-events-none" />
+      </div>
+      <div className="dark:hidden block">
+        <div className="fixed top-0 left-1/4 w-[500px] h-[500px] rounded-full bg-orange-200/30 blur-[100px] animate-drift pointer-events-none" />
+        <div className="fixed bottom-0 right-1/4 w-[400px] h-[400px] rounded-full bg-red-200/20 blur-[80px] animate-drift pointer-events-none" />
+      </div>
+
+      {/* Particle overlay */}
       <ParticleOverlay />
 
-      <ToastStack toasts={[]} onDismiss={() => {}} />
+      {/* Toast stack */}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
-      <div className="relative mx-auto flex max-w-[1500px] gap-0">
-        {/* SIDEBAR */}
-        <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg)] lg:block">
-          <div className="flex h-full flex-col">
-            <div className="px-6 pt-7 pb-6">
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-xl font-medium tracking-tight text-[var(--color-ink)]">
-                  Chaos
-                </span>
-                <span className="font-display text-xl font-medium tracking-tight text-[var(--color-accent)]">
-                  Simulator
-                </span>
-              </div>
-              <p className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-[var(--color-ink-subtle)]">
-                Microservice Telemetry · v3.0
+      {/* ===== HEADER ===== */}
+      <header className="glass-panel border-b border-border/50 sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+          <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3"
+          >
+            <div className="relative">
+              <motion.div
+                animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.05, 1] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="size-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center animate-aura shadow-lg shadow-orange-500/20"
+              >
+                <Flame className="size-5 text-white" />
+              </motion.div>
+            </div>
+            <div>
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-foreground">
+                Chaos Simulator
+              </h1>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                Distributed Microservices · Self-Healing Telemetry
               </p>
             </div>
-            <div className="rule mx-6" />
+          </motion.div>
 
-            <nav className="flex-1 overflow-y-auto px-3 py-5">
-              {Object.entries(grouped).map(([category, items]) => (
-                <div key={category} className="mb-5">
-                  <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-ink-faint)]">
-                    {category}
-                  </div>
-                  <ul className="space-y-px">
-                    {items.map((item) => {
-                      const isActive = activePanel === item.id
-                      return (
-                        <li key={item.id}>
-                          <button
-                            onClick={() => setActivePanel(item.id)}
-                            className={`flex w-full items-center justify-between gap-2 rounded px-3 py-1.5 text-left text-[13px] transition-colors ${
-                              isActive
-                                ? 'bg-[var(--color-surface-2)] text-[var(--color-ink)]'
-                                : 'text-[var(--color-ink-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)]'
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            {isActive && (
-                              <span className="size-1 rounded-full bg-[var(--color-accent)]" />
-                            )}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </nav>
-
-            <div className="border-t border-[var(--color-border)] px-6 py-4">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-faint)]">
-                Connection
-              </div>
-              <div className="mt-2">
-                <ConnectionIndicator state="connected" />
-              </div>
-              <div className="mt-3 text-[11px] leading-relaxed text-[var(--color-ink-subtle)]">
-                In-memory · polling 1Hz · watchlist local
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* MAIN */}
-        <main className="min-w-0 flex-1">
-          <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)]/80 px-8 py-4 backdrop-blur-md">
-            <div className="flex items-baseline gap-3">
-              <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-ink-subtle)]">
-                {activeItem?.category ?? 'Chaos'}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Live indicator */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20"
+            >
+              <motion.div
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-emerald-500"
+              >
+                <Activity className="size-3.5" />
+              </motion.div>
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 tracking-wide">
+                LIVE
               </span>
-              <span className="text-[var(--color-ink-faint)]">/</span>
-              <h1 className="font-display text-base font-medium tracking-tight text-[var(--color-ink)]">
-                {activeItem?.label ?? 'Overview'}
-              </h1>
+            </motion.div>
+
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
+
+            {/* Chaos toggle */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground hidden md:inline text-[11px] font-medium">Engine</span>
+              <Switch checked={chaosEnabled} onCheckedChange={handleToggleChaos} />
+              <motion.span
+                key={chaosEnabled ? 'armed' : 'disarmed'}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className={`text-[11px] font-bold tracking-wide ${chaosEnabled ? 'text-orange-500' : 'text-muted-foreground'}`}
+              >
+                {chaosEnabled ? 'ARMED' : 'DISARMED'}
+              </motion.span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <ThemeToggle theme={theme} toggle={toggle} hydrated={hydrated} />
-            </div>
-          </header>
+            <Separator orientation="vertical" className="h-5" />
 
-          <div key={activePanel} className="fade-in px-8 py-8">
-            {activePanel === 'overview' && <TelemetryOverview />}
-            {activePanel === 'topology' && <ServiceTopologyView />}
-            {activePanel === 'latency' && <LatencyChartView />}
-            {activePanel === 'anomaly' && <AnomalyTimelineView />}
-            {activePanel === 'scenario' && <ChaosScenarioBuilderView />}
-            {activePanel === 'log' && <LiveLogView />}
+            {/* Theme toggle */}
+            {mounted && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="size-8 text-muted-foreground hover:text-foreground"
+                title="Toggle theme"
+              >
+                {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              </Button>
+            )}
+
+            {/* Sound toggle */}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleSound}
+              className={`size-8 ${soundOn ? 'text-orange-500' : 'text-muted-foreground'}`}
+              title={soundOn ? 'Mute' : 'Unmute'}
+            >
+              {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+            </Button>
+
+            {/* Scenario Builder */}
+            <Button
+              size="sm"
+              onClick={() => setScenarioOpen(true)}
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white gap-1.5 shadow-lg shadow-orange-500/20"
+            >
+              <Sparkles className="size-3.5" />
+              <span className="hidden sm:inline text-xs font-medium">Scenario</span>
+              <span className="sm:hidden text-xs font-medium">Builder</span>
+            </Button>
           </div>
-        </main>
+        </div>
+
+        {/* Active scenario banner */}
+        <AnimatePresence>
+          {activeScenario && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-orange-500/20 bg-gradient-to-r from-orange-500/[0.07] via-red-500/[0.05] to-purple-500/[0.07]"
+            >
+              <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3 text-xs">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                  <Flame className="size-3.5 text-orange-500" />
+                </motion.div>
+                <span className="text-foreground font-medium">
+                  Scenario: <span className="text-orange-500 font-bold">{activeScenario.name}</span>
+                </span>
+                <span className="text-muted-foreground tabular-nums">
+                  Step {activeScenario.currentStep}/{activeScenario.totalSteps}
+                </span>
+                <div className="flex-1 max-w-[300px] h-1 bg-secondary rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full"
+                    animate={{
+                      width: `${activeScenario.totalSteps > 0 ? (activeScenario.currentStep / activeScenario.totalSteps) * 100 : 0}%`,
+                    }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
+
+      {/* ===== KPI STRIP ===== */}
+      <div className="border-b border-border/50 bg-secondary/30 backdrop-blur-sm relative z-10">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <KpiDisplay
+            services={services}
+            totalOutagesPrevented={totalOutagesPrevented}
+            simulationCycles={simulationCycles}
+          />
+        </div>
       </div>
+
+      {/* ===== MAIN CONTENT ===== */}
+      <main className="flex-1 max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full relative z-10">
+        {/* SECTION 1: Topology + Latency Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6"
+        >
+          <div className="lg:col-span-3">
+            <Card className="surface-card rounded-2xl h-full">
+              <CardHeader className="pb-2 px-5 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                  <Activity className="size-4 text-orange-500" />
+                  Service Topology
+                  <span className="text-[10px] text-muted-foreground ml-auto font-normal">
+                    Real-time health · Data flow
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <ServiceTopology services={services} chaosEnabled={chaosEnabled} />
+              </CardContent>
+            </Card>
+          </div>
+          <div className="lg:col-span-2">
+            <Card className="surface-card rounded-2xl h-full">
+              <CardHeader className="pb-2 px-5 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                  <Gauge className="size-4 text-amber-500" />
+                  Latency
+                  <span className="text-[10px] text-muted-foreground font-normal">60s window</span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] ml-auto text-muted-foreground border-border"
+                  >
+                    {services.length} services
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <LatencyChart latencyHistory={latencyHistory} services={services} />
+                <div className="flex items-center gap-4 mt-3 flex-wrap">
+                  {SERVICE_NAMES.map((name) => {
+                    const svc = services.find((s) => s.name === name)
+                    const meta = SERVICE_META[name]
+                    return (
+                      <div key={name} className="flex items-center gap-1.5 text-[10px]">
+                        <div className="size-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                        <span className="text-muted-foreground">{name.replace('Service', '')}</span>
+                        {svc && (
+                          <span className="text-foreground/60 font-mono tabular-nums">
+                            {svc.isCrashed ? '---' : `${svc.latencyMs}ms`}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </motion.div>
+
+        {/* SECTION 2: Service Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {SERVICE_NAMES.map((name, idx) => {
+            const svc = getService(name)
+            const samples = latencyHistory[name] || []
+            if (!svc) {
+              return <ServiceCardSkeleton key={name} name={name} index={idx} />
+            }
+            return (
+              <ServiceCard
+                key={name}
+                service={svc}
+                latencySamples={samples}
+                index={idx}
+                onRestart={() => handleManualRestart(name)}
+                onInjectAnomaly={(type) => handleInjectAnomaly(name, type)}
+              />
+            )
+          })}
+        </div>
+
+        {/* SECTION 3: Log + Controls */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <LiveLog logs={logs} />
+          </div>
+
+          <div className="space-y-4">
+            {/* Disaster Controls */}
+            <Card className="surface-card rounded-2xl">
+              <CardHeader className="pb-2 px-5 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                  <Skull className="size-4 text-red-500" />
+                  Disaster Controls
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 space-y-3">
+                <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}>
+                  <Button
+                    variant="destructive"
+                    className="w-full gap-2 shadow-lg shadow-red-500/20"
+                    onClick={handleTriggerPartition}
+                  >
+                    <WifiOff className="size-4" />
+                    Trigger Network Partition
+                  </Button>
+                </motion.div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Affects all three microservices simultaneously. Self-healing initiates within 15 seconds per service.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Targeted Chaos Injection */}
+            <Card className="surface-card rounded-2xl">
+              <CardHeader className="pb-2 px-5 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                  <Flame className="size-4 text-orange-500" />
+                  Targeted Injection
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 space-y-2">
+                {SERVICE_NAMES.map((name) => (
+                  <div key={name} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-[100px] shrink-0 truncate font-medium">
+                      {name.replace('Service', '')}
+                    </span>
+                    <div className="flex gap-1 flex-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-[10px] h-7 px-2 border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                        onClick={() => handleInjectAnomaly(name, '500_ERROR')}
+                      >
+                        500
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-[10px] h-7 px-2 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                        onClick={() => handleInjectAnomaly(name, 'LATENCY_SPIKE')}
+                      >
+                        Latency
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-[10px] h-7 px-2 border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                        onClick={() => handleInjectAnomaly(name, 'SERVICE_CRASH')}
+                      >
+                        Crash
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Simulation Status */}
+            <Card className="surface-card rounded-2xl">
+              <CardHeader className="pb-2 px-5 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                  <Activity className="size-4 text-sky-500" />
+                  Engine Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 pb-4">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="stat-cell">
+                    <div className="text-[10px] text-muted-foreground font-medium">Chaos Interval</div>
+                    <div className="text-foreground font-mono tabular-nums font-semibold">30s</div>
+                  </div>
+                  <div className="stat-cell">
+                    <div className="text-[10px] text-muted-foreground font-medium">Healing Check</div>
+                    <div className="text-foreground font-mono tabular-nums font-semibold">5s</div>
+                  </div>
+                  <div className="stat-cell">
+                    <div className="text-[10px] text-muted-foreground font-medium">Recovery Target</div>
+                    <div className="text-foreground font-mono tabular-nums font-semibold">&lt;15s</div>
+                  </div>
+                  <div className="stat-cell">
+                    <div className="text-[10px] text-muted-foreground font-medium">Latency Sample</div>
+                    <div className="text-foreground font-mono tabular-nums font-semibold">1s</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-secondary/50 border border-border/50">
+                  <span className="text-muted-foreground font-medium">State</span>
+                  <span className={`font-bold tabular-nums ${chaosEnabled ? 'text-orange-500' : 'text-muted-foreground'}`}>
+                    {chaosEnabled ? 'ARMED' : 'DISARMED'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* SECTION 4: Anomaly Timeline */}
+        <div className="mt-6">
+          <AnomalyTimeline entries={anomalyHistory} />
+        </div>
+      </main>
+
+      {/* ===== FOOTER ===== */}
+      <footer className="glass-panel border-t border-border/50 py-3 mt-auto relative z-10">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
+          <span className="font-medium">Chaos Simulator v2.0 — Client-Side Edition</span>
+          <span className="text-emerald-600 dark:text-emerald-500/70 font-medium">Simulation running locally</span>
+        </div>
+      </footer>
+
+      {/* Scenario Builder Dialog */}
+      <ChaosScenarioBuilder
+        open={scenarioOpen}
+        onClose={() => setScenarioOpen(false)}
+        onRun={handleRunScenario}
+      />
     </div>
   )
 }
 
-// === Thin wrapper views that compose existing components ===
-import { ServiceTopology as _ServiceTopology } from '@/components/chaos/ServiceTopology'
-import { LatencyChart as _LatencyChart } from '@/components/chaos/LatencyChart'
-import { AnomalyTimeline as _AnomalyTimeline } from '@/components/chaos/AnomalyTimeline'
-import { ChaosScenarioBuilder as _ChaosScenarioBuilder } from '@/components/chaos/ChaosScenarioBuilder'
-import { LiveLog as _LiveLog } from '@/components/chaos/LiveLog'
-import { PanelShell } from '@/components/ui/panel-shell'
-
-function ServiceTopologyView() {
+// ============================================================
+// SKELETON PLACEHOLDER
+// ============================================================
+function ServiceCardSkeleton({ name, index }: { name: string; index: number }) {
   return (
-    <PanelShell
-      category="Telemetry"
-      title="Service Topology"
-      subtitle="Live gateway-to-service mesh with particle data flow"
-      caption="Animated SVG of the gateway → 3 services graph. Particle speed reflects the source service's health."
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08 }}
     >
-      <_ServiceTopology services={[]} chaosEnabled={true} />
-    </PanelShell>
-  )
-}
-
-function LatencyChartView() {
-  return (
-    <PanelShell
-      category="Telemetry"
-      title="Latency Chart"
-      subtitle="60-second rolling latency per service · baseline vs current"
-      caption="Each line is one service. Reference line marks the SLO threshold. Anomalies (≥3% moves) flagged automatically."
-    >
-      <_LatencyChart latencyHistory={{}} services={[]} />
-    </PanelShell>
-  )
-}
-
-function AnomalyTimelineView() {
-  return (
-    <PanelShell
-      category="Operations"
-      title="Anomaly Timeline"
-      subtitle="Filterable log of all injected anomalies with recovery stats"
-      caption="Trigger source is auto (chaos loop), manual (operator), or scenario. Recovery time = resolvedAt − startedAt."
-    >
-      <_AnomalyTimeline entries={[]} />
-    </PanelShell>
-  )
-}
-
-function ChaosScenarioBuilderView() {
-  return (
-    <PanelShell
-      category="Operations"
-      title="Chaos Scenario Builder"
-      subtitle="Compose multi-step failure cascades with a 3-step wizard"
-      caption="Pick a preset, customize step order, or build from scratch. Each step runs after a configurable delay."
-    >
-      <_ChaosScenarioBuilder open={true} onClose={() => {}} onRun={() => {}} />
-    </PanelShell>
-  )
-}
-
-function LiveLogView() {
-  return (
-    <PanelShell
-      category="Diagnostics"
-      title="Live Event Stream"
-      subtitle="Real-time terminal of chaos events, recoveries, and operator actions"
-      caption="Each entry shows timestamp, level, service, and message. Auto-scrolls to newest unless you've scrolled up."
-    >
-      <_LiveLog logs={[]} />
-    </PanelShell>
-  )
-}
-
-function ThemeToggle({
-  theme,
-  toggle,
-  hydrated,
-}: {
-  theme: 'dark' | 'light'
-  toggle: () => void
-  hydrated: boolean
-}) {
-  return (
-    <button
-      onClick={toggle}
-      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-      className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--color-ink-muted)] transition-all hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)]"
-    >
-      {hydrated && theme === 'dark' ? (
-        <>
-          <Moon className="size-3" />
-          <span>Dark</span>
-        </>
-      ) : (
-        <>
-          <Sun className="size-3" />
-          <span>Light</span>
-        </>
-      )}
-    </button>
+      <Card className="surface-card rounded-2xl">
+        <CardHeader className="pb-2 px-5 pt-4">
+          <div className="flex items-center gap-2">
+            <div className="size-9 rounded-xl bg-secondary animate-pulse" />
+            <div>
+              <CardTitle className="text-sm font-semibold text-foreground">{name}</CardTitle>
+              <div className="text-[11px] text-muted-foreground">Initializing...</div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          <div className="h-32 flex items-center justify-center text-muted-foreground text-xs gap-2">
+            <RefreshCw className="size-3 animate-spin" />
+            Booting engine...
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   )
 }

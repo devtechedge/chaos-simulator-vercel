@@ -1,29 +1,69 @@
 'use client'
 
+import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
-import { Play, ChevronLeft, ChevronRight } from 'lucide-react'
-import { PanelShell } from '@/components/ui/panel-shell'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Plus,
+  Trash2,
+  Play,
+  ChevronRight,
+  ChevronLeft,
+  Zap,
+  Clock,
+  Skull,
+  Activity,
+  Flame,
+  Bomb,
+} from 'lucide-react'
+import type { AnomalyType, ScenarioStep } from '@/lib/chaos-types'
+import { SERVICE_NAMES, ANOMALY_LABELS } from '@/lib/chaos-types'
 
-const ANOMALY_TYPES = [
-  { value: '500_ERROR' as const, label: 'HTTP 500' },
-  { value: 'LATENCY_SPIKE' as const, label: 'Latency Spike' },
-  { value: 'SERVICE_CRASH' as const, label: 'Service Crash' },
-  { value: 'NETWORK_PARTITION' as const, label: 'Network Partition' },
-]
-
-const SERVICE_NAMES = ['AuthService', 'PaymentService', 'InventoryService']
-
-interface Preset {
-  name: string
-  description: string
-  steps: {
-    delayMs: number
-    service: string
-    type: '500_ERROR' | 'LATENCY_SPIKE' | 'SERVICE_CRASH' | 'NETWORK_PARTITION'
-  }[]
+interface Props {
+  open: boolean
+  onClose: () => void
+  onRun: (name: string, steps: ScenarioStep[]) => void
 }
 
-const PRESETS: Preset[] = [
+const ANOMALY_TYPES: AnomalyType[] = [
+  '500_ERROR',
+  'LATENCY_SPIKE',
+  'SERVICE_CRASH',
+  'NETWORK_PARTITION',
+]
+
+const ANOMALY_ICONS: Record<AnomalyType, React.ReactNode> = {
+  '500_ERROR': <Bomb className="size-3.5" />,
+  LATENCY_SPIKE: <Activity className="size-3.5" />,
+  SERVICE_CRASH: <Skull className="size-3.5" />,
+  NETWORK_PARTITION: <Flame className="size-3.5" />,
+}
+
+const ANOMALY_COLORS: Record<AnomalyType, string> = {
+  '500_ERROR': '#f97316',
+  LATENCY_SPIKE: '#eab308',
+  SERVICE_CRASH: '#ef4444',
+  NETWORK_PARTITION: '#dc2626',
+}
+
+const PRESETS: { name: string; description: string; steps: ScenarioStep[] }[] = [
   {
     name: 'Rolling Thunder',
     description: 'Sequential crashes across all services with 5s gaps',
@@ -63,20 +103,44 @@ const PRESETS: Preset[] = [
   },
 ]
 
-export function ChaosScenarioBuilder({
-  open,
-  onClose,
-  onRun,
-}: {
-  open: boolean
-  onClose: () => void
-  onRun: (name: string, steps: Preset['steps']) => void
-}) {
+export function ChaosScenarioBuilder({ open, onClose, onRun }: Props) {
   const [step, setStep] = useState(0)
   const [scenarioName, setScenarioName] = useState('')
-  const [steps, setSteps] = useState<Preset['steps']>([
+  const [steps, setSteps] = useState<ScenarioStep[]>([
     { delayMs: 0, service: 'AuthService', type: '500_ERROR' },
   ])
+  const [running, setRunning] = useState(false)
+
+  const reset = () => {
+    setStep(0)
+    setScenarioName('')
+    setSteps([{ delayMs: 0, service: 'AuthService', type: '500_ERROR' }])
+    setRunning(false)
+  }
+
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const addStep = () => {
+    setSteps((prev) => [
+      ...prev,
+      {
+        delayMs: prev.length > 0 ? prev[prev.length - 1].delayMs + 5000 : 0,
+        service: 'PaymentService',
+        type: 'LATENCY_SPIKE',
+      },
+    ])
+  }
+
+  const removeStep = (idx: number) => {
+    setSteps((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const updateStep = (idx: number, patch: Partial<ScenarioStep>) => {
+    setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
+  }
 
   const applyPreset = (presetIdx: number) => {
     const preset = PRESETS[presetIdx]
@@ -86,223 +150,331 @@ export function ChaosScenarioBuilder({
   }
 
   const handleRun = () => {
+    setRunning(true)
     onRun(scenarioName || 'Custom Scenario', steps)
+    setTimeout(() => {
+      handleClose()
+    }, 1200)
   }
 
   return (
-    <PanelShell
-      category="Operations"
-      title="Chaos Scenario Builder"
-      subtitle="Compose multi-step failure cascades"
-      caption="Pick a preset, customize the step order, or build from scratch. Each step runs after a configurable delay."
-    >
-      {/* Stepper */}
-      <div className="rule" />
-      <div className="flex items-center gap-2 py-4">
-        {['Select Template', 'Compose Steps', 'Review & Launch'].map((label, i) => (
-          <div key={label} className="flex flex-1 items-center gap-3">
-            <div
-              className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                step >= i
-                  ? 'bg-[var(--color-accent)] text-[var(--color-accent-fg)]'
-                  : 'bg-[var(--color-surface-2)] text-[var(--color-ink-subtle)]'
-              }`}
-            >
-              {i + 1}
-            </div>
-            <span
-              className={`text-[11px] uppercase tracking-[0.14em] ${
-                step >= i ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-subtle)]'
-              }`}
-            >
-              {label}
-            </span>
-            {i < 2 && <span className="ml-2 hidden h-px flex-1 bg-[var(--color-border)] md:block" />}
-          </div>
-        ))}
-      </div>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent className="max-w-3xl bg-card border-border text-foreground max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <Flame className="size-5 text-orange-500" />
+            Chaos Scenario Builder
+          </DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            Compose a multi-step chaos scenario. Each step runs after a configurable delay.
+          </DialogDescription>
+        </DialogHeader>
 
-      {/* STEP 0 — Template selection */}
-      {step === 0 && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {PRESETS.map((preset, i) => (
-            <button
-              key={preset.name}
-              onClick={() => applyPreset(i)}
-              className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-left transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-surface-2)]"
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-sm font-semibold text-[var(--color-ink)]">{preset.name}</span>
-                <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-ink-subtle)]">
-                  {preset.steps.length} steps
-                </span>
+        {/* Stepper */}
+        <div className="flex items-center gap-2 mb-4">
+          {['Select Template', 'Compose Steps', 'Review & Launch'].map((label, i) => (
+            <div key={label} className="flex items-center gap-2 flex-1">
+              <div
+                className={`size-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  step >= i
+                    ? 'bg-orange-500 text-foreground'
+                    : 'bg-accent text-muted-foreground border border-border'
+                }`}
+              >
+                {i + 1}
               </div>
-              <p className="text-[12px] text-[var(--color-ink-subtle)]">{preset.description}</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {preset.steps.map((s, j) => (
-                  <span
-                    key={j}
-                    className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]"
-                  >
-                    {s.service} · {s.type.replace('_', ' ')}
-                  </span>
-                ))}
-              </div>
-            </button>
+              <span
+                className={`text-xs ${step >= i ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+              >
+                {label}
+              </span>
+              {i < 2 && <ChevronRight className="size-3 text-muted-foreground ml-auto" />}
+            </div>
           ))}
         </div>
-      )}
 
-      {/* STEP 1 — Compose steps */}
-      {step === 1 && (
-        <div className="space-y-3">
-          <div>
-            <label className="label mb-1.5 block">Scenario name</label>
-            <input
-              value={scenarioName}
-              onChange={(e) => setScenarioName(e.target.value)}
-              placeholder="e.g. Friday Night Special"
-              className="h-9 w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-faint)] focus:border-[var(--color-accent)] focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <div className="label mb-2">Steps ({steps.length})</div>
-            <div className="space-y-2">
-              {steps.map((s, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-1 gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 md:grid-cols-[40px,100px,1fr,1fr]"
-                >
-                  <div className="font-mono text-[14px] font-bold text-[var(--color-accent)]">#{i + 1}</div>
-                  <input
-                    type="number"
-                    value={s.delayMs}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value) || 0
-                      setSteps((prev) => prev.map((x, j) => (j === i ? { ...x, delayMs: v } : x)))
-                    }}
-                    className="h-8 border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 font-mono text-xs text-[var(--color-ink)] focus:border-[var(--color-accent)] focus:outline-none"
-                  />
-                  <select
-                    value={s.service}
-                    onChange={(e) => {
-                      setSteps((prev) => prev.map((x, j) => (j === i ? { ...x, service: e.target.value } : x)))
-                    }}
-                    className="h-8 border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-xs text-[var(--color-ink)] focus:border-[var(--color-accent)] focus:outline-none"
+        <AnimatePresence mode="wait">
+          {/* STEP 0: Template selection */}
+          {step === 0 && (
+            <motion.div
+              key="step0"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-3"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {PRESETS.map((preset, i) => (
+                  <motion.button
+                    key={preset.name}
+                    whileHover={{ y: -2 }}
+                    onClick={() => applyPreset(i)}
+                    className="text-left p-4 rounded-xl border border-border bg-secondary/40 hover:bg-secondary/70 hover:border-primary/30 transition-all"
                   >
-                    {SERVICE_NAMES.map((sn) => (
-                      <option key={sn} value={sn}>
-                        {sn}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={s.type}
-                    onChange={(e) => {
-                      setSteps((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, type: e.target.value as any } : x)),
-                      )
-                    }}
-                    className="h-8 border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-xs text-[var(--color-ink)] focus:border-[var(--color-accent)] focus:outline-none"
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold text-foreground">{preset.name}</span>
+                      <Badge className="bg-orange-500/15 text-orange-400 border-orange-500/30">
+                        {preset.steps.length} steps
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">{preset.description}</p>
+                    <div className="flex gap-1 flex-wrap">
+                      {preset.steps.map((s, j) => (
+                        <span
+                          key={j}
+                          className="text-[9px] px-1.5 py-0.5 rounded"
+                          style={{
+                            backgroundColor: `${ANOMALY_COLORS[s.type]}20`,
+                            color: ANOMALY_COLORS[s.type],
+                          }}
+                        >
+                          {s.service.replace('Service', '')}·{s.type.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+              <button
+                onClick={() => setStep(1)}
+                className="w-full p-3 rounded-xl border border-dashed border-border hover:border-primary/30 text-xs text-muted-foreground hover:text-primary transition-all"
+              >
+                + Start from scratch instead
+              </button>
+            </motion.div>
+          )}
+
+          {/* STEP 1: Compose steps */}
+          {step === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-3"
+            >
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Scenario name</label>
+                <Input
+                  value={scenarioName}
+                  onChange={(e) => setScenarioName(e.target.value)}
+                  placeholder="e.g. Friday Night Special"
+                  className="bg-secondary/50 border-border text-foreground"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-muted-foreground">Steps ({steps.length})</label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={addStep}
+                    className="h-7 text-xs border-border hover:bg-accent"
                   >
-                    {ANOMALY_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    <Plus className="size-3" /> Add Step
+                  </Button>
                 </div>
-              ))}
-            </div>
-            <button
-              onClick={() =>
-                setSteps((prev) => [
-                  ...prev,
-                  {
-                    delayMs: prev.length > 0 ? prev[prev.length - 1].delayMs + 5000 : 0,
-                    service: 'PaymentService',
-                    type: 'LATENCY_SPIKE',
-                  },
-                ])
-              }
-              className="mt-2 w-full border border-dashed border-[var(--color-border)] py-2 text-[11px] uppercase tracking-[0.14em] text-[var(--color-ink-subtle)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-            >
-              + Add step
-            </button>
-          </div>
-        </div>
-      )}
+                {steps.map((s, i) => (
+                  <motion.div
+                    key={i}
+                    layout
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="grid grid-cols-12 gap-2 items-center p-2 rounded-md bg-secondary/40 border border-border"
+                  >
+                    <div className="col-span-1 text-center text-xs text-muted-foreground font-mono">
+                      #{i + 1}
+                    </div>
+                    <div className="col-span-3">
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-0.5">
+                        <Clock className="size-3" /> Delay (ms)
+                      </div>
+                      <Input
+                        type="number"
+                        value={s.delayMs}
+                        onChange={(e) =>
+                          updateStep(i, { delayMs: Math.max(0, parseInt(e.target.value) || 0) })
+                        }
+                        className="h-8 bg-secondary/50 border-border text-foreground text-xs"
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">Service</div>
+                      <Select
+                        value={s.service}
+                        onValueChange={(v) => updateStep(i, { service: v })}
+                      >
+                        <SelectTrigger className="h-8 bg-secondary/50 border-border text-foreground text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-card border-border">
+                          {SERVICE_NAMES.map((n) => (
+                            <SelectItem key={n} value={n} className="text-foreground text-xs">
+                              {n}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-3">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">Anomaly</div>
+                      <Select
+                        value={s.type}
+                        onValueChange={(v) => updateStep(i, { type: v as AnomalyType })}
+                      >
+                        <SelectTrigger className="h-8 bg-secondary/50 border-border text-foreground text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-card border-border">
+                          {ANOMALY_TYPES.map((t) => (
+                            <SelectItem key={t} value={t} className="text-foreground text-xs">
+                              <span className="flex items-center gap-1">
+                                {ANOMALY_ICONS[t]}
+                                {ANOMALY_LABELS[t]}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeStep(i)}
+                        disabled={steps.length === 1}
+                        className="size-7 hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
 
-      {/* STEP 2 — Review */}
-      {step === 2 && (
-        <div className="space-y-4">
-          <div>
-            <div className="label">Scenario name</div>
-            <div className="mt-1 font-display text-[18px] font-medium text-[var(--color-ink)]">
-              {scenarioName || 'Custom Scenario'}
-            </div>
-          </div>
-          <div>
-            <div className="label mb-2">Execution timeline</div>
-            <div className="space-y-1">
-              {steps.map((s, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[60px,1fr,80px] items-center gap-3 border-b border-[var(--color-border)] py-2 text-[12px]"
+          {/* STEP 2: Review & Launch */}
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-3"
+            >
+              <div className="p-4 rounded-lg bg-secondary/40 border border-border">
+                <div className="text-xs text-muted-foreground mb-1">Scenario name</div>
+                <div className="text-sm font-semibold text-foreground">
+                  {scenarioName || 'Custom Scenario'}
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">Execution timeline:</div>
+              <div className="relative pl-4 space-y-2">
+                <div className="absolute left-1 top-2 bottom-2 w-px bg-border" />
+                {steps.map((s, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="relative flex items-center gap-3"
+                  >
+                    <div
+                      className="size-2 rounded-full -ml-3.5 ring-2 ring-[#0d1220]"
+                      style={{ backgroundColor: ANOMALY_COLORS[s.type] }}
+                    />
+                    <div className="flex-1 flex items-center justify-between p-2 rounded-md bg-secondary/40">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-muted-foreground">
+                          +{String(Math.floor(s.delayMs / 1000)).padStart(2, '0')}s
+                        </span>
+                        <span className="text-xs text-foreground">{s.service}</span>
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
+                          style={{
+                            backgroundColor: `${ANOMALY_COLORS[s.type]}20`,
+                            color: ANOMALY_COLORS[s.type],
+                          }}
+                        >
+                          {ANOMALY_ICONS[s.type]}
+                          {ANOMALY_LABELS[s.type]}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">Step {i + 1}</span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <div className="p-3 rounded-md bg-orange-500/5 border border-orange-500/20 flex items-start gap-2">
+                <Zap className="size-4 text-orange-400 mt-0.5 shrink-0" />
+                <div className="text-xs text-muted-foreground">
+                  Total execution time:{' '}
+                  <span className="text-orange-400 font-mono">
+                    {(
+                      (steps[steps.length - 1]?.delayMs || 0) / 1000
+                    ).toFixed(1)}
+                    s
+                  </span>
+                  . Self-healing will run in parallel and attempt recovery on each
+                  service within 8-15 seconds of its anomaly.
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <DialogFooter className="flex items-center justify-between gap-2">
+          <Button
+            variant="ghost"
+            onClick={handleClose}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </Button>
+          <div className="flex items-center gap-2">
+            {step > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                className="border-border hover:bg-accent"
+              >
+                <ChevronLeft className="size-4" /> Back
+              </Button>
+            )}
+            {step < 2 && (
+              <Button
+                onClick={() => setStep((s) => Math.min(2, s + 1))}
+                className="bg-orange-500 hover:bg-orange-600 text-foreground"
+                disabled={step === 1 && steps.length === 0}
+              >
+                Next <ChevronRight className="size-4" />
+              </Button>
+            )}
+            {step === 2 && (
+              <motion.div
+                animate={running ? { scale: [1, 1.05, 1] } : {}}
+                transition={{ duration: 0.4, repeat: running ? Infinity : 0 }}
+              >
+                <Button
+                  onClick={handleRun}
+                  disabled={running}
+                  className="bg-red-500 hover:bg-red-600 text-foreground gap-1.5"
                 >
-                  <span className="font-mono tabular-nums text-[var(--color-accent)]">
-                    +{(s.delayMs / 1000).toFixed(1)}s
-                  </span>
-                  <span className="text-[var(--color-ink)]">{s.service}</span>
-                  <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-ink-subtle)] text-right">
-                    {s.type.replace('_', ' ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 text-[11px] uppercase tracking-[0.12em] text-[var(--color-ink-subtle)]">
-              Total {((steps[steps.length - 1]?.delayMs ?? 0) / 1000).toFixed(1)}s · {steps.length} step
-              {steps.length === 1 ? '' : 's'}
-            </div>
+                  {running ? (
+                    <>Launching...</>
+                  ) : (
+                    <>
+                      <Play className="size-4" /> Launch Scenario
+                    </>
+                  )}
+                </Button>
+              </motion.div>
+            )}
           </div>
-        </div>
-      )}
-
-      <div className="rule mt-6" />
-      <div className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <button
-          onClick={onClose}
-          className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
-        >
-          Close
-        </button>
-        <div className="flex items-center gap-2">
-          {step > 0 && (
-            <button
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
-              className="flex items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
-            >
-              <ChevronLeft className="size-3" /> Back
-            </button>
-          )}
-          {step < 2 ? (
-            <button
-              onClick={() => setStep((s) => Math.min(2, s + 1))}
-              className="flex items-center gap-1 bg-[var(--color-accent)] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-[var(--color-accent-fg)] hover:opacity-90"
-            >
-              Next <ChevronRight className="size-3" />
-            </button>
-          ) : (
-            <button
-              onClick={handleRun}
-              className="flex items-center gap-1 bg-[var(--color-accent)] px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-[var(--color-accent-fg)] hover:opacity-90"
-            >
-              <Play className="size-3" /> Launch scenario
-            </button>
-          )}
-        </div>
-      </div>
-    </PanelShell>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,83 +1,66 @@
-'use client'
-import * as React from 'react'
-import { cn } from '@/lib/utils'
+"use client"
 
-interface TabsContextValue {
-  value: string
-  onValueChange: (v: string) => void
-}
+import * as React from "react"
+import * as TabsPrimitive from "@radix-ui/react-tabs"
 
-const TabsContext = React.createContext<TabsContextValue | null>(null)
+import { cn } from "@/lib/utils"
 
-function useTabs() {
-  const ctx = React.useContext(TabsContext)
-  if (!ctx) throw new Error('Tabs components must be used within <Tabs>')
-  return ctx
-}
-
-interface TabsProps {
-  value?: string
-  defaultValue?: string
-  onValueChange?: (v: string) => void
-  children: React.ReactNode
-}
-
-function Tabs({ value, defaultValue, onValueChange, children }: TabsProps) {
-  const [internal, setInternal] = React.useState(defaultValue ?? '')
-  const isControlled = value !== undefined
-  const current = isControlled ? value : internal
-  const handleChange = (v: string) => {
-    if (!isControlled) setInternal(v)
-    onValueChange?.(v)
-  }
+function Tabs({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Root>) {
   return (
-    <TabsContext.Provider value={{ value: current, onValueChange: handleChange }}>
-      <div>{children}</div>
-    </TabsContext.Provider>
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
   )
 }
 
-function TabsList({ className, children }: React.HTMLAttributes<HTMLDivElement>) {
+function TabsList({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
-    <div className={cn('inline-flex h-9 items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] p-1 text-[var(--color-ink-muted)]', className)}>
-      {children}
-    </div>
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      className={cn(
+        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
+        className
+      )}
+      {...props}
+    />
   )
 }
 
-interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  value: string
+function TabsTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
+      className={cn(
+        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
 }
-const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
-  ({ className, value, children, ...props }, ref) => {
-    const ctx = useTabs()
-    const isActive = ctx.value === value
-    return (
-      <button
-        ref={ref}
-        onClick={() => ctx.onValueChange(value)}
-        className={cn(
-          'inline-flex items-center justify-center whitespace-nowrap rounded px-3 py-1 text-[11px] uppercase tracking-[0.14em] transition-all',
-          isActive ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent)]' : 'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)]',
-          className,
-        )}
-        data-state={isActive ? 'active' : 'inactive'}
-        {...props}
-      >
-        {children}
-      </button>
-    )
-  },
-)
-TabsTrigger.displayName = 'TabsTrigger'
 
-interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
-  value: string
-}
-function TabsContent({ className, value, children }: TabsContentProps) {
-  const ctx = useTabs()
-  if (ctx.value !== value) return null
-  return <div className={cn('mt-3', className)}>{children}</div>
+function TabsContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 outline-none", className)}
+      {...props}
+    />
+  )
 }
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
